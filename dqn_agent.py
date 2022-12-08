@@ -2,17 +2,39 @@ import sys
 import flappy_bird_gym
 import pylab
 import random
+import time
 import numpy as np
 from collections import deque
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Sequential
 
+import os
 
-# Mountain-car 예제에서의 DQN 에이전트
+"""
+DQN
+Replay memory 의 최대를 30000 / start 3000
+바로 다음의 state 만 사용
+reward shaping =>   state 로 agent 의 위치와 파이프 중간 지점 사이의 x, y 좌표 차이값이 주어지는데
+                    이 차이값의 곱의 제곱을 reward (매 step 마다 1 씩 주어짐) 에서 뺌.
+"""
+
+### TODO
+### 실행마다 Trial 변경해주기
+
+
+TRIAL = "1"
+
+# MODEL_NAME = os.path.basename(__file__).split('.')[0] + TRIAL
+MODEL_NAME = "dqn_agent_wo_rs" + TRIAL
+FIGURE_PATH = os.path.join('save_graph', MODEL_NAME + '.png')
+MODEL_PATH = os.path.join('save_model', MODEL_NAME + '.h5')
+
+
+# Mountain-car 예제에서의 DQN 에이전트를 차용
 class DQNAgent:
     def __init__(self, state_size, action_size):
-        self.render = True
+        self.render = False
 
         # 상태와 행동의 크기 정의
         self.state_size = state_size
@@ -23,13 +45,13 @@ class DQNAgent:
         self.learning_rate = 0.001
         self.epsilon = 1.0
         self.epsilon_decay = 0.999
-        self.epsilon_min = 0.01
+        self.epsilon_min = 0.001
         self.batch_size = 32
-        self.train_start = 1000
+        self.train_start = 3000
         self.nn_size = 30
 
         # 리플레이 메모리, 최대 크기 20000
-        self.memory = deque(maxlen=20000)
+        self.memory = deque(maxlen=30000)
 
         # 모델과 타깃 모델 생성
         self.model = self.build_model()
@@ -37,7 +59,6 @@ class DQNAgent:
 
         # 타깃 모델 초기화
         self.update_target_model()
-
 
     # 상태가 입력, 큐함수가 출력인 인공신경망 생성
     def build_model(self):
@@ -100,11 +121,17 @@ class DQNAgent:
         self.model.fit(states, target, batch_size=self.batch_size, epochs=1, verbose=0)
 
 
-def _getScore(info : dict) -> int:
+def _get_score(info: dict) -> int:
     return info['score']
 
+
+def _get_model_path(ep):
+    file = MODEL_NAME + "_best_until_ep" + str(ep) + '.h5'
+    return os.path.join('save_model', file)
+
+
 if __name__ == "__main__":
-    EPISODES = 400
+    EPISODES = 300
     env = flappy_bird_gym.make('FlappyBird-v0')
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
@@ -115,7 +142,7 @@ if __name__ == "__main__":
     scores, episodes = [], []
     max_score = 0
 
-    for e in range(EPISODES+1):
+    for e in range(EPISODES + 1):
         done = False
         score = 0
         # env 초기화
@@ -136,7 +163,7 @@ if __name__ == "__main__":
             #     done = True
             #     reward -= 15
 
-            reward -= abs(state[0][1] * state[0][0]) * 10
+            # reward -= pow(state[0][1] * state[0][0], 2)
             # print(reward)
 
             # 리플레이 메모리에 샘플 <s, a, r, s'> 저장
@@ -145,12 +172,17 @@ if __name__ == "__main__":
             if len(agent.memory) >= agent.train_start:
                 agent.train_model()
 
-            score = _getScore(info)
+            score = _get_score(info)
             state = next_state
 
             if done:
                 # 각 에피소드마다 타깃 모델을 모델의 가중치로 업데이트
                 agent.update_target_model()
+
+                # 최고 기록을 갱신할 때 마다 새로운 이름으로 모델 저장
+                if max_score < score:
+                    agent.model.save_weights(_get_model_path(e))
+                    max_score = score
 
                 # 에피소드마다 학습 결과 출력
                 scores.append(score)
@@ -158,8 +190,7 @@ if __name__ == "__main__":
                 print("episode:", e, "  score:", score, "  memory length:",
                       len(agent.memory), "  epsilon:", agent.epsilon)
 
-
         if e % 10 == 0:
-            agent.model.save_weights("./flappy_bird_test_1.h5")
+            agent.model.save_weights(MODEL_PATH)
             pylab.plot(episodes, scores, 'b')
-            pylab.savefig("./flappy_bird_test_1.png")
+            pylab.savefig(FIGURE_PATH)
