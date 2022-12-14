@@ -4,3 +4,7 @@ __pycache__/
 .idea/
 .git/
 
+save_graph/
+save_model/
+save_test_graph/
+test.py
