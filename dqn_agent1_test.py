@@ -68,8 +68,8 @@ def _get_score(info: dict) -> int:
 
 
 if __name__ == "__main__":
-    EPISODES = 10
-    env = flappy_bird_gym.make('FlappyBird-v0')
+    EPISODES = 0
+    env = flappy_bird_gym.make('FlappyBird-v0', background='black')
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     env.reset()
@@ -96,16 +96,9 @@ if __name__ == "__main__":
 
             next_state = np.reshape(next_state, [1, state_size])
 
-            # if state[0][0] < 0.53 and state[0][1] > 0.4 or state[0][1] < -0.5:
-            #     done = True
-            #     reward -= 15
-
             reward -= pow(state[0][1] * state[0][0], 2)
 
             # 매 타임스텝마다 학습
-
-            if _get_score(info) > score:
-                print('next_state:', next_state)
 
             score = _get_score(info)
             state = next_state
@@ -119,4 +112,4 @@ if __name__ == "__main__":
                 print("episode:", e, "  score:", score)
 
         pylab.plot(episodes, scores, 'b')
-        pylab.savefig(FIGURE_PATH)
+        # pylab.savefig(FIGURE_PATH)
