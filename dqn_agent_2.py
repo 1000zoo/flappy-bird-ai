@@ -13,10 +13,7 @@ import os
 
 """
 DQN
-Replay memory 의 최대를 30000 / start 3000
-바로 다음의 state 만 사용
-reward shaping =>   state 로 agent 의 위치와 파이프 중간 지점 사이의 x, y 좌표 차이값이 주어지는데
-                    이 차이값의 곱의 제곱을 reward (매 step 마다 1 씩 주어짐) 에서 뺌.
+잘 학습된 모델을 불러올 수 있게 수정
 """
 
 ### TODO
@@ -163,12 +160,7 @@ if __name__ == "__main__":
             next_state, reward, done, info = env.step(action)
             next_state = np.reshape(next_state, [1, state_size])
 
-            # if state[0][0] < 0.53 and state[0][1] > 0.4 or state[0][1] < -0.5:
-            #     done = True
-            #     reward -= 15
-
             reward -= pow(state[0][1], 2)
-            # print(reward)
 
             # 리플레이 메모리에 샘플 <s, a, r, s'> 저장
             agent.append_sample(state, action, reward, next_state, done)

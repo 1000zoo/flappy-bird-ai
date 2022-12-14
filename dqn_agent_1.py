@@ -159,13 +159,6 @@ if __name__ == "__main__":
             next_state, reward, done, info = env.step(action)
             next_state = np.reshape(next_state, [1, state_size])
 
-            # if state[0][0] < 0.53 and state[0][1] > 0.4 or state[0][1] < -0.5:
-            #     done = True
-            #     reward -= 15
-
-            # reward -= pow(state[0][1] * state[0][0], 2)
-            # print(reward)
-
             # 리플레이 메모리에 샘플 <s, a, r, s'> 저장
             agent.append_sample(state, action, reward, next_state, done)
             # 매 타임스텝마다 학습
