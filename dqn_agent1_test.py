@@ -10,6 +10,10 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Sequential
 from tensorflow.keras import models
 
+# for cnn
+from PIL import Image
+import io
+
 from os.path import join
 
 """
@@ -17,11 +21,12 @@ TEST
 DQN 에서 exploration 을 제거한 뒤 학습 중 보다는 스코어가 꽤 높았다.
 """
 
-MODEL_NAME = "dqn_agent_21_best_until_ep992"
+MODEL_NAME = "dqn_agent_3_4_best_until_ep1422"
+FIG_NAME = MODEL_NAME + "_test"
 FIG_DIR = "./save_graph"
 MODEL_DIR = "./save_model"
 
-FIGURE_PATH = join("save_graph",  MODEL_NAME + ".png")
+FIGURE_PATH = join("save_graph",  FIG_NAME + ".png")
 MODEL_PATH = join(MODEL_DIR, MODEL_NAME + ".h5")
 
 
@@ -39,7 +44,7 @@ class DQNAgent:
         self.learning_rate = 0.001
         self.batch_size = 32
         self.train_start = 3000
-        self.nn_size = 30
+        self.nn_size = 60
 
         # 모델과 타깃 모델 생성
         self.model = self.build_model()
@@ -68,11 +73,12 @@ def _get_score(info: dict) -> int:
 
 
 if __name__ == "__main__":
-    EPISODES = 0
-    env = flappy_bird_gym.make('FlappyBird-v0', background='black')
+    EPISODES = 10
+    env = flappy_bird_gym.make('FlappyBird-v0')
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     env.reset()
+
     # DQN 에이전트 생성
     agent = DQNAgent(state_size, action_size)
 
@@ -112,4 +118,4 @@ if __name__ == "__main__":
                 print("episode:", e, "  score:", score)
 
         pylab.plot(episodes, scores, 'b')
-        # pylab.savefig(FIGURE_PATH)
+        pylab.savefig(FIGURE_PATH)
