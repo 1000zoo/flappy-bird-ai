@@ -13,17 +13,13 @@ import os
 
 """
 DQN
-잘 학습된 모델을 불러올 수 있게 수정
+Library 수정
+(2,2)로 들어가게
 """
 
-### TODO
-### 실행마다 Trial 변경해주기
-
-
-TRIAL = "_2"
+TRIAL = "_3"
 
 MODEL_NAME = os.path.basename(__file__).split('.')[0] + TRIAL
-# MODEL_NAME = "dqn_agent_wo_rs" + TRIAL
 FIGURE_PATH = os.path.join('save_graph', MODEL_NAME + '.png')
 MODEL_PATH = os.path.join('save_model', MODEL_NAME + '.h5')
 
@@ -31,22 +27,22 @@ MODEL_PATH = os.path.join('save_model', MODEL_NAME + '.h5')
 # Mountain-car 예제에서의 DQN 에이전트를 차용
 class DQNAgent:
     def __init__(self, state_size, action_size):
-        self.render = False
-        self.load_model = False
+        self.render = True
+        # self.load_model = True
 
         # 상태와 행동의 크기 정의
         self.state_size = state_size
         self.action_size = action_size
 
         # DQN 하이퍼파라미터
-        self.discount_factor = 0.99
-        self.learning_rate = 0.001
+        self.discount_factor = 0.999
+        self.learning_rate = 0.0001
         self.epsilon = 1.0
-        self.epsilon_decay = 0.999
-        self.epsilon_min = 0.001
+        self.epsilon_decay = 0.99999
+        self.epsilon_min = 0.00001
         self.batch_size = 32
         self.train_start = 3000
-        self.nn_size = 30
+        self.nn_size = 60
 
         # 리플레이 메모리, 최대 크기 20000
         self.memory = deque(maxlen=30000)
@@ -58,8 +54,8 @@ class DQNAgent:
         # 타깃 모델 초기화
         self.update_target_model()
 
-        if self.load_model:
-            self.model.load_weights("save_model/dqn_agent_21_best_until_ep992.h5")
+        # if self.load_model:
+        #     self.model.load_weights("save_model/dqn_agent_21_best_until_ep609.h5")
 
     # 상태가 입력, 큐함수가 출력인 인공신경망 생성
     def build_model(self):
@@ -96,15 +92,13 @@ class DQNAgent:
 
         # 메모리에서 배치 크기만큼 무작위로 샘플 추출
         mini_batch = random.sample(self.memory, self.batch_size)
-        states = np.zeros((self.batch_size, self.state_size))
-        next_states = np.zeros((self.batch_size, self.state_size))
+        states = np.array([sample[0][0] / 255. for sample in mini_batch], dtype=np.float32)
+        next_states = np.array([sample[3][0] / 255. for sample in mini_batch], dtype=np.float32)
         actions, rewards, dones = [], [], []
 
         for i in range(self.batch_size):
-            states[i] = mini_batch[i][0]
             actions.append(mini_batch[i][1])
             rewards.append(mini_batch[i][2])
-            next_states[i] = mini_batch[i][3]
             dones.append(mini_batch[i][4])
 
         # 현재 상태에 대한 모델의 큐함수
@@ -132,10 +126,12 @@ def _get_model_path(ep):
 
 
 if __name__ == "__main__":
-    EPISODES = 1000
-    env = flappy_bird_gym.make('FlappyBird-v0')
+    EPISODES = 5000
+    env = flappy_bird_gym.make('FlappyBird-v0', sequence=True)
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
+    state = env.reset()
+
     env.reset()
     # DQN 에이전트 생성
     agent = DQNAgent(state_size, action_size)
@@ -148,7 +144,7 @@ if __name__ == "__main__":
         score = 0
         # env 초기화
         state = env.reset()
-        state = np.reshape(state, [1, state_size])
+        state = np.reshape(state, [2, state_size])
 
         while not done:
             if agent.render:
@@ -157,10 +153,11 @@ if __name__ == "__main__":
             # 현재 상태로 행동을 선택
             action = agent.get_action(state)
             # 선택한 행동으로 환경에서 한 타임스텝 진행
-            next_state, reward, done, info = env.step(action)
-            next_state = np.reshape(next_state, [1, state_size])
+            next_state, _, done, info = env.step(action)
 
-            reward -= pow(state[0][1], 2)
+            next_state = np.reshape(next_state, [2, state_size])
+
+            reward = -abs(state[0][1])
 
             # 리플레이 메모리에 샘플 <s, a, r, s'> 저장
             agent.append_sample(state, action, reward, next_state, done)

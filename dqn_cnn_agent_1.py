@@ -20,7 +20,9 @@ from os.path import join
 """
 CNN 을 이용한 DQN
 연속된 4장이 아닌, 한 장의 사진을 학습
-reward shaping => 라이브러리 내부에서 구현
+reward shaping => 라이브러리 내부에서 구현 => -abs(state[0][1])
+
+=> 학습 안됨,,
 """
 
 IMAGE_SIZE = (128, 128, 1)
@@ -42,10 +44,10 @@ class DQNAgent:
 
         # DQN 하이퍼파라미터
         self.discount_factor = 0.99
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
         self.epsilon = 1.0
-        self.epsilon_decay = 0.999
-        self.epsilon_min = 0.0001
+        self.epsilon_decay = 0.9999
+        self.epsilon_min = 0.000001
         self.batch_size = 32
         self.train_start = 5000
 
@@ -143,6 +145,7 @@ def pre_processing(o):
 if __name__ == "__main__":
     EPISODES = 1000
 
+    ## 라이브러리를 수정하여 cnn 추가
     ## cnn=True => step 의 리턴값이 dx, dy 에서 이미지 버퍼로 바뀜
     ## background='black' => 불필요한 배경을 학습하지 않도록 검은색 배경으로 변경
     env = flappy_bird_gym.make('FlappyBird-v0', cnn=True, background='black')
@@ -167,6 +170,8 @@ if __name__ == "__main__":
             action = agent.get_action(state)
             observe, reward, done, info = env.step(action)
             next_state = pre_processing(observe)
+            if score < _get_score(info):
+                reward += 1
             agent.append_sample(state, action, reward, next_state, done)
 
             if len(agent.memory) >= agent.train_start:

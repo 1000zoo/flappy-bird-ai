@@ -5,62 +5,76 @@ import random
 import time
 import numpy as np
 from collections import deque
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, MaxPooling2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Sequential
+from tensorflow.keras import models
+from matplotlib import cm
 
+# for cnn
+from PIL import Image
 import os
+import time
+
+from os.path import join
 
 """
-DQN
-Replay memory 의 최대를 30000 / start 3000
-바로 다음의 state 만 사용
-reward shaping =>   state 로 agent 의 위치와 파이프 중간 지점 사이의 x, y 좌표 차이값이 주어지는데
-                    이 차이값의 곱의 제곱을 reward (매 step 마다 1 씩 주어짐) 에서 뺌.
+CNN 을 이용한 DQN
+연속된 4장
+random action 에서 1 일 때 self.random_change 확률로 0으로 변경 => 삭제
+lr 0.0001 => 0.001
+reward clip 추가
+라이브러리에서 reward => 0.3 - pow(state[0][1], 2) 로 변경
 
-epsilon min => exploration 비율을 줄이기 위해 더 낮춤
-epsilon decay => 최소값을 줄이는 대신 더 오래 exploration 을 자주 허용하기 위해 늘림
-discounting factor => 더 먼 미래까지 고려하기 위해 높임
-nn_size 30 => 60
+trial_1
+IMAGE_SIZE = 188,188,4
+- 죽으면 reward -1
 
-trail_3
-천장을 뚫고가면 죽는것으로 변경 (보상도 -0.5)
+trial_2
+Image_size = 84,84,4
+초반 40스텝 이전에는 학습 x
+
+trial_3
+IMAGE_SIZE = (84, 84, 4)
+- 극 초반에 파이프가 없을 때는, 파이프와 캐릭터 사이의 상대위치로 보상이 들어오더라도
+화면 상에 파이프가 표시되어 있지 않으므로, 보상과 state 사이의 관계가 성립되지 않기 때문에
+초반에는 reward 를 0으로 고정
+
+trial_4
+background black => None
+IS = 120, 120, 8
+reward => curr score
 """
 
-### TODO
-### 실행마다 Trial 변경해주기
-
-
+IMAGE_SIZE = (84, 84, 8)
 TRIAL = "_5"
 
 MODEL_NAME = os.path.basename(__file__).split('.')[0] + TRIAL
-# MODEL_NAME = "dqn_agent_wo_rs" + TRIAL
 FIGURE_PATH = os.path.join('save_graph', MODEL_NAME + '.png')
 MODEL_PATH = os.path.join('save_model', MODEL_NAME + '.h5')
 
 
-# Mountain-car 예제에서의 DQN 에이전트를 차용
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.render = True
-        self.load_model = False
+        # self.load_model = True
 
         # 상태와 행동의 크기 정의
         self.state_size = state_size
         self.action_size = action_size
 
         # DQN 하이퍼파라미터
-        self.discount_factor = 0.999
-        self.learning_rate = 0.0001
+        self.discount_factor = 0.99
+        self.learning_rate = 0.00001
         self.epsilon = 1.0
-        self.epsilon_decay = 0.999
-        self.epsilon_min = 0.00001
+        self.epsilon_decay = 0.999909
+        self.epsilon_min = 0.0001
         self.batch_size = 32
-        self.train_start = 3000
-        self.nn_size = 60
+        self.train_start = 5000
+        self.train_start_step = 40
 
-        # 리플레이 메모리, 최대 크기 60000
-        self.memory = deque(maxlen=60000)
+        # 리플레이 메모리, 최대 크기 50000
+        self.memory = deque(maxlen=50000)
 
         # 모델과 타깃 모델 생성
         self.model = self.build_model()
@@ -69,19 +83,20 @@ class DQNAgent:
         # 타깃 모델 초기화
         self.update_target_model()
 
-        # if self.load_model:
-        #     self.model.load_weights("save_model/dqn_agent_21_best_until_ep992.h5")
-
     # 상태가 입력, 큐함수가 출력인 인공신경망 생성
     def build_model(self):
         model = Sequential()
 
-        model.add(Dense(self.nn_size, input_dim=self.state_size, activation='relu',
-                        kernel_initializer='he_uniform'))
-        model.add(Dense(self.nn_size, activation='relu', kernel_initializer='he_uniform'))
+        model.add(Conv2D(16, (8, 8), activation='relu', input_shape=state_size))
+        model.add(MaxPooling2D(pool_size=(4, 4)))
+        model.add(Conv2D(8, (4, 4), activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Flatten())
+
+        model.add(Dense(32, activation='relu', kernel_initializer='he_uniform'))
         model.add(Dense(self.action_size, activation='linear', kernel_initializer='he_uniform'))
         model.summary()
-        model.compile(loss='mse', optimizer=Adam(lr=self.learning_rate))
+        model.compile(loss='mse', optimizer=Adam(lr=self.learning_rate, clipnorm=10.))
         return model
 
     # 타깃 모델을 모델의 가중치로 업데이트
@@ -91,7 +106,7 @@ class DQNAgent:
     # 입실론 탐욕 정책으로 행동 선택
     def get_action(self, state):
         if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
+            return 1 if random.randrange(10) <= 1 else 0
         else:
             q_value = self.model.predict(state, verbose=0)
             return np.argmax(q_value[0])
@@ -107,15 +122,13 @@ class DQNAgent:
 
         # 메모리에서 배치 크기만큼 무작위로 샘플 추출
         mini_batch = random.sample(self.memory, self.batch_size)
-        states = np.zeros((self.batch_size, self.state_size))
-        next_states = np.zeros((self.batch_size, self.state_size))
+        states = np.array([sample[0][0] / 255. for sample in mini_batch], dtype=np.float32)
+        next_states = np.array([sample[3][0] / 255. for sample in mini_batch], dtype=np.float32)
         actions, rewards, dones = [], [], []
 
         for i in range(self.batch_size):
-            states[i] = mini_batch[i][0]
             actions.append(mini_batch[i][1])
             rewards.append(mini_batch[i][2])
-            next_states[i] = mini_batch[i][3]
             dones.append(mini_batch[i][4])
 
         # 현재 상태에 대한 모델의 큐함수
@@ -142,50 +155,67 @@ def _get_model_path(ep):
     return os.path.join('save_model', file)
 
 
+## s에는 bytes array 로 현재 state 의 image (점수는 표시되지 않음)
+## RGBA 이미지를 흑백화면으로 바꾼 후 불필요한 바닥 부분을 줄임
+## crop(left, up, right, down)
+def pre_processing(o):
+    img = Image.frombuffer('RGBA', (288, 512), o) \
+        .crop((0, 0, 288, 425)) \
+        .convert("L") \
+        .resize(IMAGE_SIZE[:2])
+    return np.asarray(img).reshape([1, IMAGE_SIZE[0], IMAGE_SIZE[1], 1])
+
+
 if __name__ == "__main__":
     EPISODES = 10000
-    env = flappy_bird_gym.make('FlappyBird-v0')
-    state_size = env.observation_space.shape[0]
-    action_size = env.action_space.n
-    env.reset()
-    # DQN 에이전트 생성
-    agent = DQNAgent(state_size, action_size)
+    start_time = time.time()
 
-    scores, episodes = [], []
+    ## cnn=True => step 의 리턴값이 dx, dy 에서 이미지 버퍼로 바뀜
+    ## background='black' => 불필요한 배경을 학습하지 않도록 검은색 배경으로 변경
+    env = flappy_bird_gym.make('FlappyBird-v0', cnn=True, background=None)
+    state_size = IMAGE_SIZE
+    action_size = env.action_space.n
+    agent = DQNAgent(action_size=action_size, state_size=state_size)
     max_score = 0
+    scores, episodes = [], []
 
     for e in range(EPISODES + 1):
         done = False
+
+        env.reset()
+        env.render()
+        observe = env.step(0)[0]
         score = 0
-        # env 초기화
-        state = env.reset()
-        state = np.reshape(state, [1, state_size])
+        state = pre_processing(observe)
+        history = np.stack((state, state, state, state, state, state, state, state), axis=2)
+        history = np.reshape([history], (1, state_size[0], state_size[1], state_size[2]))
+        step = 0
 
         while not done:
-            if agent.render:
-                env.render()
+            step += 1
+            env.render()
 
-            print(state)
-            # 현재 상태로 행동을 선택
-            action = agent.get_action(state)
-            # 선택한 행동으로 환경에서 한 타임스텝 진행
-            next_state, reward, done, info = env.step(action)
-            next_state = np.reshape(next_state, [1, state_size])
+            action = agent.get_action(history)
 
-            reward -= pow(state[0][1], 2)
-            # print(reward)
+            if step <= 25:
+                action = 1 if np.random.rand() < 0.1 else 0
+            observe, reward, done, info = env.step(action)
+            next_state = pre_processing(observe)
+            next_state = np.reshape([next_state], (1, state_size[0], state_size[1], 1))
+            next_history = np.append(next_state, history[:, :, :, :state_size[2]-1], axis=3)
 
-            # 리플레이 메모리에 샘플 <s, a, r, s'> 저장
-            agent.append_sample(state, action, reward, next_state, done)
-            # 매 타임스텝마다 학습
-            if len(agent.memory) >= agent.train_start:
-                agent.train_model()
+            if score < _get_score(info):
+                reward += 1
+
+            if step >= 25:
+                agent.append_sample(history, action, reward, next_history, done)
+                if len(agent.memory) >= agent.train_start:
+                    agent.train_model()
 
             score = _get_score(info)
-            state = next_state
+            history = next_history
 
             if done:
-                # 각 에피소드마다 타깃 모델을 모델의 가중치로 업데이트
                 agent.update_target_model()
 
                 # 최고 기록을 갱신할 때 마다 새로운 이름으로 모델 저장
@@ -197,7 +227,8 @@ if __name__ == "__main__":
                 scores.append(score)
                 episodes.append(e)
                 print("episode:", e, "  score:", score, "  memory length:",
-                      len(agent.memory), "  epsilon:", agent.epsilon, " max score:", max_score)
+                      len(agent.memory), "  epsilon:", agent.epsilon, " time:", time.time() - start_time,
+                      "max score:", max_score)
 
         if e % 10 == 0:
             agent.model.save_weights(MODEL_PATH)
